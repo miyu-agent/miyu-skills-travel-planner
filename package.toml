@@ -1,0 +1,6 @@
+[package]
+version = "0.1.0"
+name = { en = "Travel planner", zh = "旅行规划" }
+summary = { en = "Plan a trip with sources: itinerary, budget, and flight and hotel prices", zh = "带出处地排行程、算预算，查机票和酒店价格" }
+author = "SHORiN-KiWATA"
+icon = "map"
