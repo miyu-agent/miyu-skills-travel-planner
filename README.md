@@ -41,5 +41,5 @@ Google 酒店的日期、币种编在 `ts` 参数里，同样自己拼。Google 
 ## 注意
 
 - 价格是起价，下单价可能更高；往返合计是两张单程相加，不是联程价。
-- 价格历史存在 `MIYU_SCRIPT_STATE_DIR`（核心还没提供时放 `MIYU_SCRIPT_CACHE_DIR`，重启会清空）。
+- 价格历史存在 `MIYU_STATE_DIR`（核心还没提供时放 `MIYU_CACHE_DIR`，重启会清空）。
 - 出口在哪个国家会影响 Google 的结果；`gl` 写死机票 `us`、酒店 `jp`，别的地区没实测过。

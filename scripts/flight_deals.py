@@ -32,7 +32,7 @@
 protobuf），自己拼得出来，所以查一次只要一条 HTTP 请求，不用浏览器。只用标准库。
 
 出发地和目的地必须给，脚本不猜：猜错了输出看起来完全正常，比报错危险。
-价格历史（trend 用）存在 MIYU_SCRIPT_STATE_DIR，没有就放 MIYU_SCRIPT_CACHE_DIR。
+价格历史（trend 用）存在 MIYU_STATE_DIR，没有就放 MIYU_CACHE_DIR。
 """
 
 import base64
@@ -55,7 +55,7 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
 
 # 价格历史放在能留住的地方：有持久的状态目录用它，没有就放缓存目录（重启会清空）。
-DATA_DIR = os.environ.get("MIYU_SCRIPT_STATE_DIR") or os.environ.get("MIYU_SCRIPT_CACHE_DIR") or ""
+DATA_DIR = os.environ.get("MIYU_STATE_DIR") or os.environ.get("MIYU_CACHE_DIR") or ""
 DB_PATH = os.path.join(DATA_DIR, "flight-history.db") if DATA_DIR else ""
 
 SPARK = "▁▂▃▄▅▆▇█"
@@ -1067,7 +1067,7 @@ REQUIRED = {"observed_at", "route", "origin", "dest", "depart", "seat", "adults"
 
 def db():
     if not DB_PATH:
-        raise Failed("没有 MIYU_SCRIPT_STATE_DIR 或 MIYU_SCRIPT_CACHE_DIR，价格历史存不住",
+        raise Failed("没有 MIYU_STATE_DIR 或 MIYU_CACHE_DIR，价格历史存不住",
                      "在 Miyu 里调用；或者设 no_record=true")
     os.makedirs(DATA_DIR, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
