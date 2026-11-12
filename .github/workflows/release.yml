@@ -8,4 +8,4 @@ jobs:
     permissions:
       contents: write
     with:
-      package: miyu-skills-travel-planner
+      package: travel-planner
