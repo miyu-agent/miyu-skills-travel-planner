@@ -174,5 +174,46 @@ class FarDates(Sandbox):
         self.assertIn("9999-12-31", out)
 
 
+class TrendSources(Sandbox):
+    # 审计 #172-3：build 把没写的 sources 默认成 ["google"]，cmd_trend 的
+    # (a.source or [None])[0] 永远拿到 google，「不按来源过滤」那条路走不到：
+    # 不写 sources 时 booking 的观测点看不见。没写时应该不分来源，写了才只看那个来源。
+    ROWS = [("2026-11-01T01:00:00+00:00", "google", 100),
+            ("2026-11-02T01:00:00+00:00", "booking", 90),
+            ("2026-11-03T01:00:00+00:00", "google", 110)]
+
+    def setUp(self):
+        super().setUp()
+        with self.mod.db() as c:
+            c.executemany(
+                "INSERT INTO observations (observed_at,place,source,name,name_key,checkin,checkout,"
+                "nights,price,per_night,currency) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                [(t, "Tokyo", src, "H", "h", "2026-12-01", "2026-12-02", 1, p, p, "USD")
+                 for t, src, p in self.ROWS])
+
+    def floors(self, **extra):
+        rc, out = self.call(dict({"action": "trend", "location": "Tokyo", "currency": "USD",
+                                  "format": "json"}, **extra))
+        self.assertEqual(rc, 0, out)
+        return [r["floor_per_night"] for r in json.loads(out)]
+
+    def test_no_sources_means_all_sources(self):
+        self.assertEqual(self.floors(), [100, 90, 110])
+
+    # 防改坏（现在就绿）：显式写了来源就只看那个来源。
+    def test_explicit_source_filters(self):
+        self.assertEqual(self.floors(sources=["google"]), [100, 110])
+        self.assertEqual(self.floors(sources=["booking"]), [90])
+
+    # 防改坏（现在就绿）：search 不写 sources 时照旧只走 google（不起浏览器）。
+    def test_search_default_still_google(self):
+        self.PAGE = '<div aria-label="Prices starting from CN¥355, Fake Hotel"></div>'
+        rc, out = self.call({"action": "search", "location": "Tokyo", "format": "json",
+                             "no_record": True})
+        self.assertEqual(rc, 0, out)
+        got = json.loads(out)
+        self.assertEqual((got["sources_ok"], got["sources_failed"]), (["google"], []))
+
+
 if __name__ == "__main__":
     unittest.main()
