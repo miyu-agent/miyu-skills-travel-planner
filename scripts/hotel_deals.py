@@ -16,7 +16,7 @@
 #   "adults": {"type": "integer", "description": "Default 2 (Booking only)."},
 #   "rooms": {"type": "integer", "description": "Default 1 (Booking only)."},
 #   "currency": {"type": "string", "description": "ISO 4217 code, default CNY."},
-#   "sources": {"type": "array", "items": {"type": "string", "enum": ["google", "booking"]}, "description": "search: default [google]. booking needs playwright and a browser, takes 10-20 s and gets rate-limited; add it to cross-check before quoting."},
+#   "sources": {"type": "array", "items": {"type": "string", "enum": ["google", "booking"]}, "description": "search: default [google]. booking needs playwright and a browser, takes 10-20 s and gets rate-limited; add it to cross-check before quoting. trend: only that source's history; default all sources."},
 #   "top": {"type": "integer", "description": "Rows, default 20."},
 #   "format": {"type": "string", "enum": ["md", "json"], "description": "md (default) for reading; json for code, e.g. piping miyu call into jq or python."},
 #   "no_record": {"type": "boolean", "description": "Don't add this result to the price history."}
@@ -972,7 +972,8 @@ def build(args):
     location = _str(args, "location")
     if not location and action in ("search", "sweep", "trend"):
         raise Failed(f"{action} 要给 location", "例如 location=Shinjuku, Tokyo")
-    sources = args.get("sources") or ["google"]
+    # trend 不写就不分来源；查价的默认只走 google。
+    sources = args.get("sources") or ([] if action == "trend" else ["google"])
     if isinstance(sources, str):
         sources = [sources]
     if not isinstance(sources, list) or any(s not in ("google", "booking") for s in sources):
