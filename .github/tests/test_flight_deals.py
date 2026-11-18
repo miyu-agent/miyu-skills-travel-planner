@@ -107,5 +107,36 @@ class DeadConstants(unittest.TestCase):
             self.assertRegex(src, r"\bdef reshape\(", "注释提到 reshape()，却没有这个函数")
 
 
+class FarDates(Sandbox):
+    # 审计收尾：出发日写成 +N 且 N 极大时 parse_day 的 date + timedelta 抛 OverflowError
+    # （只接了 ValueError）；sweep 的 days 极大时 plan_combos 算返程日同样超界。
+    # main 只接 Failed，打 traceback。写成 9999-12-25 这种日期的有售票窗口挡着，本来就是友好报错。
+    CASES = [
+        {"action": "search", "depart": "+99999999999"},
+        {"action": "search", "depart": "+3000000"},
+        {"action": "sweep", "window": "+10..+99999999999"},
+        {"action": "sweep", "window": "+10..+20", "days": "3000000"},
+        {"action": "sweep", "window": "+10..+20", "days": "99999999999"},
+    ]
+
+    def test_far_dates_fail_before_request(self):
+        for args in self.CASES:
+            with self.subTest(args=args):
+                self.calls.clear()
+                rc, out = self.call(dict(args, origin="PVG", dest="NRT"))
+                self.assertEqual(rc, 1, out[:300])
+                self.assertTrue(out.startswith("失败："), out[:300])
+                self.assertEqual(self.calls, [], "超界的日期不该发请求")
+
+    # 防改坏（现在就绿）：极远的具体日期由售票窗口挡下。
+    def test_far_calendar_date_hits_horizon(self):
+        for args in ({"action": "search", "depart": "9999-12-25"},
+                     {"action": "sweep", "window": "9999-12-01..9999-12-31"}):
+            with self.subTest(args=args):
+                rc, out = self.call(dict(args, origin="PVG", dest="NRT"))
+                self.assertEqual(rc, 1, out)
+                self.assertIn("售票窗口", out)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -142,5 +142,37 @@ class SweepDays(Sandbox):
                 self.assertEqual(len(self.calls), 0, f"days={days} 发了 {len(self.calls)} 个请求")
 
 
+class FarDates(Sandbox):
+    # 审计收尾：入住日写得极远再加晚数/天数，date + timedelta 超出 9999-12-31 抛 OverflowError，
+    # main 只接 Failed，打 traceback；sweep 每天的退房日都超界时还会交回一张全是
+    # 「date value out of range」的表、退出码 0。应在发请求前报 Failed（返回 1）。
+    CASES = [
+        {"action": "search", "checkin": "9999-12-25", "nights": 7},
+        {"action": "search", "nights": 3_000_000},
+        {"action": "search", "checkin": "+99999999999"},
+        {"action": "search", "checkin": "+3000000"},
+        {"action": "sweep", "checkin": "9999-12-25"},
+        {"action": "sweep", "checkin": "9999-12-01", "days": 10, "nights": 100},
+        {"action": "sweep", "nights": 1_000_000_000},
+    ]
+
+    def test_far_dates_fail_before_request(self):
+        for args in self.CASES:
+            with self.subTest(args=args):
+                self.calls.clear()
+                rc, out = self.call(dict(args, location="Tokyo", no_record=True))
+                self.assertEqual(rc, 1, out[:300])
+                self.assertTrue(out.startswith("失败："), out[:300])
+                self.assertEqual(self.calls, [], "超界的日期不该发请求")
+
+    # 防改坏（现在就绿）：退房日正好是 9999-12-31 照常查。
+    def test_last_representable_day_still_works(self):
+        self.PAGE = '<div aria-label="Prices starting from CN¥355, Fake Hotel"></div>'
+        rc, out = self.call({"action": "search", "location": "Tokyo", "checkin": "9999-12-30",
+                             "no_record": True})
+        self.assertEqual(rc, 0, out)
+        self.assertIn("9999-12-31", out)
+
+
 if __name__ == "__main__":
     unittest.main()
