@@ -215,5 +215,61 @@ class TrendSources(Sandbox):
         self.assertEqual((got["sources_ok"], got["sources_failed"]), (["google"], []))
 
 
+class BrowserHome(Sandbox):
+    # 审计 #172-5：Miyu 的沙盒把 ~/.config/chromium 盖成空的只读目录，Chromium 的崩溃处理
+    # 建不了目录会 SIGTRAP（同作者的 goofish 实测过，给浏览器另设了 XDG_CONFIG_HOME）。
+    # hotel_deals 起 Chromium 时没给 env，浏览器照用 ~/.config。应另给一个可写的目录：
+    # 有缓存目录放缓存目录下，没有就用临时目录。
+    # 不起浏览器：playwright 整个换成桩，launch 只记下参数、当场看目录在不在、能不能写。
+    def launch_env(self):
+        seen = {}
+
+        def launch(**kw):
+            env = kw.get("env") or {}
+            seen["env"] = dict(env)
+            seen["writable"] = {k: bool(env.get(k)) and os.path.isdir(env[k]) and os.access(env[k], os.W_OK)
+                                for k in ("XDG_CONFIG_HOME", "XDG_CACHE_HOME")}
+            raise RuntimeError("测试里不起浏览器")
+
+        class Playwright:
+            chromium = mock.Mock(launch=launch)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        api = mock.Mock(sync_playwright=Playwright)
+        with mock.patch.dict(sys.modules, {"playwright": mock.Mock(), "playwright.sync_api": api}):
+            rc, out = self.call({"action": "search", "location": "Tokyo", "sources": ["booking"],
+                                 "no_record": True})
+        self.assertEqual(rc, 1, out)
+        self.assertIn("env", seen, "launch 没被调到：" + out)
+        return seen
+
+    def assert_own_home(self, seen, under):
+        env = seen["env"]
+        for key in ("XDG_CONFIG_HOME", "XDG_CACHE_HOME"):
+            with self.subTest(key=key):
+                self.assertIn(key, env, "launch 没拿到给浏览器另设的 " + key)
+                self.assertTrue(seen["writable"][key], f"{key}={env.get(key)} 不是可写的目录")
+                self.assertTrue(env[key].startswith(under), f"{key}={env[key]} 不在 {under} 下")
+                self.assertFalse(env[key].startswith(os.environ["HOME"]), "不该落回 HOME 下")
+        self.assertEqual(env.get("HOME"), os.environ["HOME"], "别的环境变量照传")
+
+    def test_browser_home_under_cache_dir(self):
+        cache = str(pathlib.Path(self.mod.DB_PATH).parent.parent / "cache")
+        with mock.patch.dict(os.environ, {"MIYU_CACHE_DIR": cache, "MIYU_SCRIPT_CACHE_DIR": cache}):
+            self.mod = load()
+            with mock.patch.object(self.mod.urllib.request, "urlopen", side_effect=OSError("不联网")):
+                seen = self.launch_env()
+        self.assert_own_home(seen, cache)
+
+    def test_browser_home_without_cache_dir_is_temporary(self):
+        seen = self.launch_env()
+        self.assert_own_home(seen, tempfile.gettempdir())
+
+
 if __name__ == "__main__":
     unittest.main()
