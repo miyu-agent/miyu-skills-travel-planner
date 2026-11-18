@@ -456,7 +456,7 @@ def resolve(text, what="地点"):
 
     near = candidates(raw)
     hint = ("直接写三字码也行，例如 dest=NRT；"
-            f"或跑 flight-deals airports {raw} 查一下")
+            f"或用 action=airports、query={raw} 查一下")
     if near:
         hint = "可能是：" + "、".join(near[:8]) + "。" + hint
     raise Failed(f"不认识的{what}「{raw}」", hint)
@@ -1057,14 +1057,6 @@ CREATE TABLE IF NOT EXISTS observations (
     stops INTEGER, airlines TEXT, duration_min INTEGER);
 CREATE INDEX IF NOT EXISTS idx_obs_route ON observations (route, depart, observed_at);
 """
-
-
-# 写入时用到的列。改这里就要同时改 SCHEMA —— reshape() 靠两者对比判断老库该不该重建。
-COLUMNS = ("observed_at", "route", "origin", "dest", "depart", "seat", "adults",
-           "currency", "price", "stops", "airlines", "duration_min")
-# 新表里 NOT NULL 的那些。老库缺其中任何一列就没法搬，只能从头攒。
-REQUIRED = {"observed_at", "route", "origin", "dest", "depart", "seat", "adults",
-            "currency", "price"}
 
 
 def db():
@@ -2097,6 +2089,9 @@ def build(args):
     airline = args.get("airline") or None
     if isinstance(airline, str):
         airline = [airline]
+    if airline is not None and (not isinstance(airline, list)
+                                or any(not isinstance(x, str) or not x.strip() for x in airline)):
+        raise Failed(f"airline 每项要是非空的航司名：{airline!r}", "例如 airline=[\"东航\", \"ANA\"]")
     sort = args.get("sort") or "price"
     if sort not in SORTS:
         raise Failed(f"不认识的排序：{sort}", "price、duration、depart、arrive、stops")
