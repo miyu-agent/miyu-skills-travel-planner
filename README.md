@@ -28,7 +28,7 @@ Google 酒店的日期、币种编在 `ts` 参数里，同样自己拼。Google 
 | `action` | `search`（默认）查一段住宿；`sweep` 扫未来几天找最便宜的入住日；`trend` 价格历史；`places` 记过的地方；`doctor` 自检 |
 | `location` | 地名，最好写英文（`Shinjuku, Tokyo`）：中文只能模糊匹配，可能落到 30 公里外，输出里会提醒 |
 | `checkin`、`checkout`、`nights` | 默认 7 天后住 1 晚 |
-| `days` | 只给 `sweep`：扫几天，默认 30 |
+| `days` | 只给 `sweep`：扫几天，默认 30，最多 90 |
 | `sources` | 默认 `["google"]`；加 `booking` 交叉验证 |
 | `adults`、`rooms` | 只对 Booking 有用，默认 2、1 |
 | `currency`、`top`、`format`、`no_record` | 同上 |

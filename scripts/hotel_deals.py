@@ -12,10 +12,10 @@
 #   "checkin": {"type": "string", "description": "+7, 10-15 or 2026-10-15. search: default +7. sweep: first day, default tomorrow."},
 #   "checkout": {"type": "string", "description": "search: default checkin + nights."},
 #   "nights": {"type": "integer", "description": "Default 1, which keeps nightly prices comparable."},
-#   "days": {"type": "integer", "description": "sweep: days to scan, default 30."},
+#   "days": {"type": "integer", "description": "sweep: days to scan, default 30, at most 90."},
 #   "adults": {"type": "integer", "description": "Default 2 (Booking only)."},
 #   "rooms": {"type": "integer", "description": "Default 1 (Booking only)."},
-#   "currency": {"type": "string", "description": "Default CNY."},
+#   "currency": {"type": "string", "description": "ISO 4217 code, default CNY."},
 #   "sources": {"type": "array", "items": {"type": "string", "enum": ["google", "booking"]}, "description": "search: default [google]. booking needs playwright and a browser, takes 10-20 s and gets rate-limited; add it to cross-check before quoting."},
 #   "top": {"type": "integer", "description": "Rows, default 20."},
 #   "format": {"type": "string", "enum": ["md", "json"], "description": "md (default) for reading; json for code, e.g. piping miyu call into jq or python."},
@@ -55,6 +55,21 @@ DATA_DIR = (os.environ.get("MIYU_STATE_DIR") or os.environ.get("MIYU_SCRIPT_STAT
 DB_PATH = os.path.join(DATA_DIR, "hotel-history.db") if DATA_DIR else ""
 SPARK = "▁▂▃▄▅▆▇█"
 SYMBOL = {"CNY": "¥", "JPY": "JP¥", "USD": "$", "EUR": "€", "HKD": "HK$", "KRW": "₩"}
+# 认得的币种：ISO 4217 现行代码。
+CURRENCIES = frozenset("""
+AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND BOB BRL BSD BTN BWP
+BYN BZD CAD CDF CHF CLP CNY COP CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP
+GEL GHS GIP GMD GNF GTQ GYD HKD HNL HTG HUF IDR ILS INR IQD IRR ISK JMD JOD JPY KES KGS KHR
+KMF KPW KRW KWD KYD KZT LAK LBP LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK
+MXN MYR MZN NAD NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR
+SBD SCR SDG SEK SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD TWD TZS
+UAH UGX USD UYU UZS VED VES VND VUV WST XAF XCD XCG XOF XPF YER ZAR ZMW ZWG
+""".split())
+# 英文站（hl=en）价格前面的符号；没有专门符号的币种直接写代码（SGD 100）。
+PAGE_SYMBOL = {"$": "USD", "US$": "USD", "CN¥": "CNY", "¥": "JPY", "JP¥": "JPY", "€": "EUR",
+               "£": "GBP", "HK$": "HKD", "₩": "KRW", "A$": "AUD", "CA$": "CAD", "NT$": "TWD",
+               "NZ$": "NZD", "MX$": "MXN", "R$": "BRL", "₹": "INR", "₪": "ILS", "₫": "VND",
+               "₱": "PHP"}
 
 
 class Failed(RuntimeError):
@@ -267,6 +282,11 @@ def google_search(place, checkin, checkout, currency="CNY", region="jp",
     nights = max((checkout - checkin).days, 1)
     prices, ratings = {}, {}
     for m in _G_PRICE.finditer(page):
+        symbol = _html.unescape(m.group(1)).strip()
+        shown = PAGE_SYMBOL.get(symbol) or (symbol.upper() if symbol.upper() in CURRENCIES else None)
+        if shown and shown != currency:
+            raise Failed(f"Google 给的价是 {shown}（页面上写的 {symbol}），不是请求的 {currency}",
+                         f"换 currency={shown} 再查，或者稍后重试")
         prices[_html.unescape(m.group(3)).strip()] = (float(m.group(2).replace(",", "")),
                                                       m.group(4))
     for m in _G_RATING.finditer(page):
@@ -465,11 +485,11 @@ def record(place, offers):
     return len(rows)
 
 
-def floor_history(place, checkin=None, source=None):
-    """按观测时刻返回当时的最低每晚价 —— "近期涨跌"的时间轴。"""
+def floor_history(place, currency, checkin=None, source=None):
+    """按观测时刻返回当时的最低每晚价 —— "近期涨跌"的时间轴。只算同一币种的记录。"""
     sql = ("SELECT observed_at, MIN(per_night) AS floor FROM observations"
-           " WHERE place = ? AND per_night IS NOT NULL")
-    args = [place]
+           " WHERE place = ? AND currency = ? AND per_night IS NOT NULL")
+    args = [place, currency]
     if checkin:
         sql += " AND checkin = ?"
         args.append(checkin.isoformat())
@@ -829,13 +849,13 @@ def cmd_sweep(a):
 
 def cmd_trend(a):
     src = (a.source or [None])[0]
-    rows = floor_history(a.location, a.checkin, src)
+    rows = floor_history(a.location, a.currency, a.checkin, src)
     if a.format == "json":
         print(json.dumps([{"observed_at": t, "floor_per_night": v} for t, v in rows],
                          ensure_ascii=False, indent=2))
         return 0
     if len(rows) < 2:
-        print(f"{a.location} 目前只有 {len(rows)} 个观测点，还画不出趋势。")
+        print(f"{a.location} 目前只有 {len(rows)} 个 {a.currency} 的观测点，还画不出趋势。")
         print("趋势要隔几天查一次才攒得出来。")
         return 0
     vals = [v for _, v in rows]
@@ -899,11 +919,14 @@ def cmd_doctor(a):
 
 # ---------------------------------------------------------------- 入口
 
+# sweep 一天一个 Google 请求，扫太多天既慢又容易被限流。
+MAX_SWEEP_DAYS = 90
+
 COMMANDS = {"search": cmd_search, "sweep": cmd_sweep, "trend": cmd_trend,
             "places": cmd_places, "doctor": cmd_doctor}
 
 
-def _int(args, key, default, low):
+def _int(args, key, default, low, high=None):
     value = args.get(key, default)
     if isinstance(value, bool) or not isinstance(value, (int, str)):
         raise Failed(f"{key} 要一个整数：{value!r}")
@@ -913,6 +936,8 @@ def _int(args, key, default, low):
         raise Failed(f"{key} 要一个整数：{value!r}") from None
     if value < low:
         raise Failed(f"{key} 至少是 {low}：{value}")
+    if high is not None and value > high:
+        raise Failed(f"{key} 最多是 {high}：{value}")
     return value
 
 
@@ -942,14 +967,17 @@ def build(args):
         raise Failed(f"不认识的数据源：{sources!r}", "google、booking")
     if action == "sweep" and sources != ["google"]:
         raise Failed("sweep 只能走 google", "去掉 sources")
+    currency = (_str(args, "currency") or "CNY").upper()
+    if currency not in CURRENCIES:
+        raise Failed(f"不认识的币种：{currency}", "写 ISO 4217 代码，例如 CNY、JPY、USD、EUR")
     checkin, checkout = _str(args, "checkin"), _str(args, "checkout")
     return SimpleNamespace(
         action=action, format=fmt, location=location,
         checkin=parse_day(checkin) if checkin else None,
         checkout=parse_day(checkout) if checkout else None,
-        nights=_int(args, "nights", 1, 1), days=_int(args, "days", 30, 1),
+        nights=_int(args, "nights", 1, 1), days=_int(args, "days", 30, 1, MAX_SWEEP_DAYS),
         adults=_int(args, "adults", 2, 1), rooms=_int(args, "rooms", 1, 1),
-        currency=(_str(args, "currency") or "CNY").upper(),
+        currency=currency,
         source=list(dict.fromkeys(sources)), top=_int(args, "top", 20, 1),
         no_record=bool(args.get("no_record")),
         limit=40, region="jp", workers=6)
