@@ -1592,6 +1592,8 @@ def parse_day(s):
             return date.today() + timedelta(days=int(s[1:]))
         except ValueError:
             raise Failed(f"看不懂的日期：{s}（+7 表示 7 天后）")
+        except OverflowError:
+            raise Failed(f"{s} 太远了，日期最晚到 9999-12-31") from None
     # 不带年份的写法自己补年份，别交给 strptime 去猜：Python 3.14 起它会打一条
     # DeprecationWarning 混进 stderr，3.15 打算直接改成报错。
     if m := re.fullmatch(r"(\d{1,2})[-/](\d{1,2})", s):
@@ -1812,6 +1814,8 @@ def cmd_sweep(a):
 
     # 不给 --days 就只扫去程(纯单程视角)；给了才连回程一起扫，并算出行程组合。
     days = parse_days(a.days) if a.days else None
+    if days and max(days) > BOOKING_HORIZON_DAYS:
+        raise Failed(f"玩 {max(days)} 天比售票窗口（大约 11 个月）还长，凑不出行程", "把 days 改小")
     # 窗口尾巴超出售票视野的那几天不发请求:每天要白搭三次重试加退避,还照吃
     # --max-queries,最后渲染成"—"再甩一句"航线不通"——真实原因只是还没开售。
     horizon = date.today() + timedelta(days=BOOKING_HORIZON_DAYS)

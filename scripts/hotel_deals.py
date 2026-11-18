@@ -764,6 +764,8 @@ def parse_day(s):
             return date.today() + timedelta(days=int(s[1:]))
         except ValueError:
             raise Failed(f"看不懂的日期：{s}（+7 表示 7 天后）") from None
+        except OverflowError:
+            raise Failed(f"{s} 太远了，日期最晚到 9999-12-31") from None
     # 不带年份的自己补年份：交给 strptime 会打 DeprecationWarning，3.15 起要报错。
     if m := re.fullmatch(r"(\d{1,2})[-/](\d{1,2})", s):
         month, day = int(m.group(1)), int(m.group(2))
@@ -784,9 +786,18 @@ def parse_day(s):
         f"看不懂的日期：{s}（能写 2026-10-15、10-15、或 +7 表示 7 天后）")
 
 
+def later(day, n):
+    """day 往后 n 天；超出 9999-12-31 时报 Failed，不让 OverflowError 打 traceback。"""
+    try:
+        return day + timedelta(days=n)
+    except OverflowError:
+        raise Failed(f"{day} 再往后 {n} 天超出了能算的日期（最晚 9999-12-31）",
+                     "把入住日、nights 或 days 改小") from None
+
+
 def cmd_search(a):
     checkin = a.checkin or date.today() + timedelta(days=7)
-    checkout = a.checkout or checkin + timedelta(days=a.nights)
+    checkout = a.checkout or later(checkin, a.nights)
     if checkout <= checkin:
         raise Failed(f"退房日 {checkout} 不晚于入住日 {checkin}",
                      "去掉 checkout 改用 nights，或把日期调过来")
@@ -830,6 +841,7 @@ def cmd_search(a):
 
 def cmd_sweep(a):
     start = a.checkin or date.today() + timedelta(days=1)
+    later(start, a.days - 1 + a.nights)     # 最后一天的退房日也得算得出来，免得每天都报错
 
     def progress(done, total):
         pass  # 标准错误现在会混进结果，进度先不报
