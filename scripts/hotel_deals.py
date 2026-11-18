@@ -39,10 +39,12 @@ import shutil
 import sqlite3
 import statistics
 import sys
+import tempfile
 import unicodedata
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from difflib import SequenceMatcher
@@ -124,6 +126,23 @@ def launch_kwargs(headless=True):
     elif shutil.which("chromium") or shutil.which("chromium-browser"):
         kw["channel"] = "chromium"
     return kw
+
+
+@contextmanager
+def browser_env():
+    """给浏览器的环境：另设 XDG_CONFIG_HOME、XDG_CACHE_HOME。
+
+    Miyu 的沙盒把 ~/.config/chromium 盖成空的只读目录，崩溃处理建不了自己的目录，
+    浏览器会 SIGTRAP。放缓存目录的 browser-home/ 下；没有缓存目录时用临时目录，用完删掉。
+    """
+    cache = os.environ.get("MIYU_CACHE_DIR") or os.environ.get("MIYU_SCRIPT_CACHE_DIR")
+    if cache:
+        home = os.path.join(cache, "browser-home")
+        os.makedirs(home, exist_ok=True)
+        yield dict(os.environ, XDG_CONFIG_HOME=home, XDG_CACHE_HOME=home)
+        return
+    with tempfile.TemporaryDirectory(prefix="hotel-deals-browser-") as home:
+        yield dict(os.environ, XDG_CONFIG_HOME=home, XDG_CACHE_HOME=home)
 
 
 # ---------------------------------------------------------------- Google ts 参数
@@ -332,9 +351,9 @@ def booking_search(place, checkin, checkout, adults=2, rooms=1, currency="CNY",
     nights = max((checkout - checkin).days, 1)
     offers, seen = [], set()
     try:
-        with sync_playwright() as p:
+        with browser_env() as env, sync_playwright() as p:
             try:
-                browser = p.chromium.launch(**launch_kwargs(headless))
+                browser = p.chromium.launch(**launch_kwargs(headless), env=env)
             except Exception as exc:
                 raise Failed(f"启动浏览器失败：{exc}",
                              "python3 -m playwright install chromium")

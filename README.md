@@ -37,6 +37,7 @@ Google 酒店的日期、币种编在 `ts` 参数里，同样自己拼。Google 
 
 - 只用 Python 标准库，能联网到 `google.com` 就行。
 - **Booking 源是可选的**：要 `pip install --user playwright`，再装一个浏览器（系统的 Chrome、Edge、Chromium，或 `python3 -m playwright install chromium`）。无头运行，一次 10–20 秒，连着查几次会被限流。`hotel_deals` 的 `doctor` 会说装没装好。
+- Miyu 的沙盒把 `~/.config/chromium` 盖成空的只读目录：`hotel_deals` 给浏览器另设了 `XDG_CONFIG_HOME`、`XDG_CACHE_HOME`，指到缓存目录 `MIYU_CACHE_DIR` 下的 `browser-home/`；没有缓存目录时用临时目录，用完删掉。还没在 Miyu 沙盒里实测过。
 
 ## 注意
 
