@@ -52,5 +52,5 @@ The tools need the following:
 Keep the following in mind when you use the tools:
 
 - The prices are starting prices, and the price when you book may be higher; a round-trip total is the sum of two one-way tickets, not the price of a round-trip ticket.
-- The price history is stored in `MIYU_STATE_DIR` (when the core does not provide this folder yet, it is kept in `MIYU_CACHE_DIR` and cleared on restart; older versions of the core provide `MIYU_SCRIPT_STATE_DIR` and `MIYU_SCRIPT_CACHE_DIR`, which the tools also accept).
+- The price history is stored in `MIYU_STATE_DIR` (when the core does not provide this folder yet, it is kept in `MIYU_CACHE_DIR` and cleared on restart).
 - The country your traffic exits from affects Google's results; `gl` is fixed to `us` for flights and `jp` for hotels, and other regions have not been tested.
